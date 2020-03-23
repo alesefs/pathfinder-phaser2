@@ -1,0 +1,185 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+	<title>phaser joystick</title>
+	<script src="libs/phaser.min.js"></script>
+	<script src="libs/PathFinderPlugin.js"></script>
+	<script src="libs/easystar-0.1.5.js"></script>
+	<style type="text/css">
+		html{overflow-y:hidden;overflow-x:hidden;}
+		body { margin: 0; padding: 0; background: #000;}
+		canvas { display: block; margin: 0 auto; background: #fff; }
+	</style>
+	<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0" />
+</head>
+
+<body>
+ <script type="text/javascript">
+
+(function () {
+
+	var game = new Phaser.Game(500, 400, Phaser.CANVAS, 'teste', { preload: preload, create: create, update: update, render: render});
+	
+	//var player;
+	var text;
+	var map;
+	var layer;
+	var pathfinder;
+	var marker;
+	var lastPointer = [0, 0];
+	var blocked = false;
+	var speed = 600;
+	var nutmag;
+	var walkables = [];
+	var indexTile = 0;
+
+
+	function preload() {
+
+		game.load.image('ball_', 'assets/ball_.png');
+		game.load.tilemap('map', 'assets/teste.csv', null, Phaser.Tilemap.CSV);
+    	game.load.image('tiles_', 'assets/test_tiled.jpg');
+		game.load.spritesheet('nutmag', 'assets/ss_player.png', 32, 32);//'nutmag.png', 16, 18, 4);
+		
+	}
+
+
+	function create() {
+		game.world.setBounds(0, 0, 800, 608);
+	    game.physics.startSystem(Phaser.Physics.P2JS);
+		game.physics.startSystem(Phaser.Physics.ARCADE);
+		game.stage.backgroundColor = '#00ffff';
+
+		map = game.add.tilemap('map', 32, 32);
+		map.addTilesetImage('tiles_');
+		currentTile = map.getTile(2, 3);
+		map.setCollisionBetween(1, 4);
+	    map.setCollision(7);
+	    layer = map.createLayer(0);
+	    layer.resizeWorld();
+
+		walkables = [0, 5, 6];
+		pathfinder = game.plugins.add(Phaser.Plugin.PathFinderPlugin);
+    	pathfinder.setGrid(map.layers[0].data, walkables);
+	
+		
+		nutmag = game.add.sprite(0, 0, 'nutmag');
+		game.physics.enable(nutmag, Phaser.Physics.ARCADE);
+		game.physics.p2.enable(nutmag);
+		game.camera.follow(nutmag);
+		nutmag.body.collideWorldBounds = true;
+		nutmag.animations.add('walkD', [0,1,2], 5, true);
+		nutmag.animations.add('walkL', [3,4,5], 5, true);
+		nutmag.animations.add('walkR', [6,7,8], 5, true);
+		nutmag.animations.add('walkU', [9,10,11], 5, true);		
+		
+		game.input.onDown.add(movePlayer, this);
+
+		text = game.add.text(25, 40, '', {font: "20px  arial", fill: '#00c6ff', align: "center", stroke: "#000508", strokeThickness: 1});
+		text.fixedToCamera = true;
+
+		marker = game.add.graphics();
+	    marker.lineStyle(2, 0x000000, 1);
+	    marker.drawRect(0, 0, 32, 32);
+	}
+
+
+	function findPathTo(tilex, tiley) {
+
+    pathfinder.setCallbackFunction(function(path) {
+        path = path || [];
+        var i = -1; //MAGICA pra inicilizar do path[0];
+
+	           	var interval = setInterval(function () {
+			   		
+						
+					if(i == path.length){
+			    		clearInterval(interval);
+			    		blocked = false;
+			    	}
+						
+						i++;
+						nutmag.x = path[i].x*32;
+						nutmag.y = path[i].y*32;	
+					
+						
+						var currentPoint = path[i];
+						var nextPoint = path[i+1];
+
+					
+					if(blocked == true){
+	
+						if(nextPoint.y - currentPoint.y > 0){
+							nutmag.animations.play('walkD', 5, false);
+							//text.text = "IDLE" + lastPointer + " - ";
+						} 
+						else if (nextPoint.y - currentPoint.y < 0){
+							nutmag.animations.play('walkU', 5, false);
+							//text.text = "IDLE" + lastPointer + " - ";
+						}
+						else if (nextPoint.x - currentPoint.x > 0){
+							nutmag.animations.play('walkR', 5, false);
+							//text.text = "IDLE" + lastPointer + " - ";
+						} 
+						else if (nextPoint.x - currentPoint.x < 0){
+							nutmag.animations.play('walkL', 5, false);
+							//text.text = "IDLE" + lastPointer + " - ";
+						}
+
+						} else {
+							velX = 0;
+							nutmag.frame = 0;
+						}	
+						
+						text.text = " " + i + " - " + layer.getTileX(marker.x);
+
+	        	}, speed/6);
+    	});
+		
+		pathfinder.preparePathCalculation(lastPointer, [tilex,tiley]);
+		pathfinder.calculatePath();
+		
+	}
+
+	
+	function update() {
+
+		marker.x = layer.getTileX(game.input.activePointer.worldX) * 32;
+   		marker.y = layer.getTileY(game.input.activePointer.worldY) * 32;
+
+		game.physics.arcade.collide(nutmag, layer);
+
+	}
+
+
+	function movePlayer(pointer){
+
+		indexTile = map.getTile(layer.getTileX(marker.x), layer.getTileY(marker.y)).index; //MAGICA2 - pra nao aceitar cliques de tiles nao caminhaveis
+
+		if(indexTile == 0 || indexTile == 5 || indexTile == 6){
+			blocked = true;	
+	        findPathTo(layer.getTileX(marker.x), layer.getTileY(marker.y));
+			lastPointer[0] = layer.getTileX(marker.x);
+			lastPointer[1] = layer.getTileY(marker.y);		
+		} else {
+			blocked = false;
+		}
+		
+	}
+
+
+	function render() {
+    	//game.debug.body(nutmag);
+    	//game.debug.bodyInfo(player, 32, 32);
+    	game.debug.text('X: ' + layer.getTileX(nutmag.x) + ' Y: ' + layer.getTileY(nutmag.y) + ' Z: ' + indexTile/*map.getTile(layer.getTileX(marker.x), layer.getTileY(marker.y)).index*/, 132, 48, 'rgb(0,0,0)');
+   	}
+
+
+})();
+
+</script>
+
+<p class="game">AREFS productions</p>
+
+</body>
+</html>
